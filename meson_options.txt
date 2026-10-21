@@ -17,3 +17,5 @@ option('require-system-font-provider', type: 'boolean', value: true,
        description: 'disallow compilation if no system font provider was found')
 option('large-tiles', type: 'boolean', value: false,
        description: 'use larger tiles in the rasterizer (better performance, slightly worse quality)')
+
+option('native-bitmap-fonts', type: 'boolean', value: false, description: 'Experimental monochrome FreeType bitmap strikes (DomeD experiment)')

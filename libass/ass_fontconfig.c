@@ -124,8 +124,17 @@ static bool scan_fonts(FcConfig *config, ASS_FontProvider *provider)
 
         // skip non-outline fonts
         FcResult result = FcPatternGetBool(pat, FC_OUTLINE, 0, &outline);
-        if (result != FcResultMatch || outline != FcTrue)
+        if (result != FcResultMatch)
             continue;
+        if (outline != FcTrue) {
+#if CONFIG_NATIVE_BITMAP_FONTS
+            FcBool scalable;
+            if (FcPatternGetBool(pat, FC_SCALABLE, 0, &scalable) != FcResultMatch || scalable)
+                continue;
+#else
+            continue;
+#endif
+        }
 
         // simple types
         result  = FcPatternGetInteger(pat, FC_SLANT, 0, &slant);

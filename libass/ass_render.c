@@ -2006,6 +2006,13 @@ static void get_base_point(ASS_DRect *bbox, int alignment, double *bx, double *b
 static void
 fix_glyph_scaling(ASS_Renderer *priv, GlyphInfo *glyph)
 {
+#if CONFIG_NATIVE_BITMAP_FONTS
+    int face_index = 0, glyph_index = 0;
+    ass_font_get_index(priv->fontselect, glyph->font, glyph->symbol, &face_index, &glyph_index);
+    FT_Face face = glyph->font->faces[face_index];
+    if (!FT_IS_SCALABLE(face) && FT_HAS_FIXED_SIZES(face))
+        return; // Bitmap strikes cannot be rasterized at the synthetic 256px size.
+#endif
     double ft_size;
     if (priv->settings.hinting == ASS_HINTING_NONE) {
         // arbitrary, not too small to prevent grid fitting rounding effects

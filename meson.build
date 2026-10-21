@@ -335,6 +335,7 @@ if not asm_option.disabled()
     endif
 endif
 
+conf.set('CONFIG_NATIVE_BITMAP_FONTS', get_option('native-bitmap-fonts').to_int())
 conf.set('CONFIG_LARGE_TILES', get_option('large-tiles').to_int())
 
 conf.set('CONFIG_SOURCEVERSION', '"meson, commit: @VCS_TAG@"')

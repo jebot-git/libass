@@ -194,6 +194,13 @@ static void set_run_features(ASS_Shaper *shaper, GlyphInfo *info)
  */
 static void update_hb_size(hb_font_t *hb_font, FT_Face face, FT_Size_Metrics *m)
 {
+#if CONFIG_NATIVE_BITMAP_FONTS
+    if (!FT_IS_SCALABLE(face) && FT_HAS_FIXED_SIZES(face)) {
+        hb_font_set_scale(hb_font, m->x_ppem * 64, m->y_ppem * 64);
+        hb_font_set_ppem(hb_font, m->x_ppem, m->y_ppem);
+        return;
+    }
+#endif
     hb_font_set_scale (hb_font,
             ((uint64_t) m->x_scale * (uint64_t) face->units_per_EM) >> 16,
             ((uint64_t) m->y_scale * (uint64_t) face->units_per_EM) >> 16);
@@ -445,7 +452,12 @@ bool ass_create_hb_font(ASS_Font *font, int index)
         return false;
 
     hb_face_set_index(hb_face, face->face_index);
-    hb_face_set_upem(hb_face, face->units_per_EM);
+    unsigned upem = face->units_per_EM;
+#if CONFIG_NATIVE_BITMAP_FONTS
+    if (!upem && !FT_IS_SCALABLE(face) && FT_HAS_FIXED_SIZES(face))
+        upem = 1000;
+#endif
+    hb_face_set_upem(hb_face, upem);
 
     hb_font_t *hb_font = hb_font_create(hb_face);
     hb_face_destroy(hb_face);

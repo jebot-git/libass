@@ -262,8 +262,14 @@ get_font_info(FT_Library lib, FT_Face face, const char *fallback_family_name,
     char *families[MAX_FULLNAME];
 
     // we're only interested in outlines
-    if (!(face->face_flags & FT_FACE_FLAG_SCALABLE))
+    if (!(face->face_flags & FT_FACE_FLAG_SCALABLE)) {
+#if CONFIG_NATIVE_BITMAP_FONTS
+        if (!FT_HAS_FIXED_SIZES(face))
+            return false;
+#else
         return false;
+#endif
+    }
 
     for (i = 0; i < num_names; i++) {
         FT_SfntName name;

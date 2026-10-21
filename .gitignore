@@ -42,3 +42,6 @@ Makefile.in
 
 # Meson
 /subprojects
+
+# Local Python renderer tests
+__pycache__/

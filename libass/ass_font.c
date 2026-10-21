@@ -506,6 +506,20 @@ size_t ass_font_construct(void *key, void *value, void *priv)
 
 void ass_face_set_size(FT_Face face, double size)
 {
+#if CONFIG_NATIVE_BITMAP_FONTS
+    if (!FT_IS_SCALABLE(face) && FT_HAS_FIXED_SIZES(face)) {
+        // Native strikes are snapped, not fractionally resampled. Layout and
+        // glyph caches use the same selected strike through this function.
+        int best = 0;
+        double distance = HUGE_VAL;
+        for (int i = 0; i < face->num_fixed_sizes; i++) {
+            double delta = fabs(size - face->available_sizes[i].y_ppem / 64.0);
+            if (delta < distance) { distance = delta; best = i; }
+        }
+        FT_Select_Size(face, best);
+        return;
+    }
+#endif
     FT_Size_RequestRec rq;
     memset(&rq, 0, sizeof(rq));
     rq.type = FT_SIZE_REQUEST_TYPE_REAL_DIM;
@@ -584,6 +598,13 @@ void ass_font_get_asc_desc(ASS_Font *font, int face_index,
                            int *asc, int *desc)
 {
     FT_Face face = font->faces[face_index];
+#if CONFIG_NATIVE_BITMAP_FONTS
+    if (!FT_IS_SCALABLE(face) && FT_HAS_FIXED_SIZES(face)) {
+        *asc = face->size->metrics.ascender;
+        *desc = -face->size->metrics.descender;
+        return;
+    }
+#endif
     int y_scale = face->size->metrics.y_scale;
     *asc  = FT_MulFix(face->ascender, y_scale);
     *desc = FT_MulFix(-face->descender, y_scale);
@@ -718,6 +739,10 @@ bool ass_font_get_glyph(ASS_Font *font, int face_index, int index,
     }
 
     FT_Face face = font->faces[face_index];
+#if CONFIG_NATIVE_BITMAP_FONTS
+    if (!FT_IS_SCALABLE(face) && FT_HAS_FIXED_SIZES(face))
+        flags = FT_LOAD_DEFAULT | FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH | FT_LOAD_IGNORE_TRANSFORM;
+#endif
     FT_Error error = FT_Load_Glyph(face, index, flags);
     if (error) {
         ass_msg(font->library, MSGL_WARN, "Error loading glyph, index %d",
@@ -725,6 +750,10 @@ bool ass_font_get_glyph(ASS_Font *font, int face_index, int index,
         return false;
     }
 
+#if CONFIG_NATIVE_BITMAP_FONTS
+    if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP)
+        return true;
+#endif
     FT_Long style_flags = ass_face_get_style_flags(face);
     if (!(style_flags & FT_STYLE_FLAG_ITALIC) && (font->desc.italic > 55))
         ass_glyph_italicize(face);
@@ -752,6 +781,62 @@ void ass_font_clear(ASS_Font *font)
 /**
  * \brief Convert glyph into ASS_Outline according to decoration flags
  **/
+#if CONFIG_NATIVE_BITMAP_FONTS
+// Convert native one-bit scanline runs to exact pixel-cell contours. This
+// reuses libass's transform, outline, clip and bitmap caches, without requiring
+// an outline companion font or changing the public ASS_Image ABI.
+static bool bitmap_outline(ASS_Outline *outline, FT_GlyphSlot slot, unsigned flags)
+{
+    const FT_Bitmap *bitmap = &slot->bitmap;
+    if ((bitmap->width && bitmap->rows && bitmap->pixel_mode != FT_PIXEL_MODE_MONO) || bitmap->width > 4096 || bitmap->rows > 4096)
+        return false;
+    size_t pitch = bitmap->pitch < 0 ? -(int64_t)bitmap->pitch : bitmap->pitch;
+    if (bitmap->rows && bitmap->width && (!bitmap->buffer || pitch < (bitmap->width + 7) / 8))
+        return false;
+    if (llabs((int64_t)slot->bitmap_left) + bitmap->width > OUTLINE_MAX / 64 ||
+        llabs((int64_t)slot->bitmap_top) + bitmap->rows > OUTLINE_MAX / 64)
+        return false;
+    if (llabs((int64_t)slot->advance.x) > OUTLINE_MAX ||
+        llabs((int64_t)slot->face->size->metrics.ascender) > OUTLINE_MAX - 64 ||
+        llabs((int64_t)slot->face->size->metrics.descender) > OUTLINE_MAX - 64)
+        return false;
+    size_t runs = 0;
+    for (unsigned y = 0; y < bitmap->rows && bitmap->width; y++) {
+        const unsigned char *row = bitmap->buffer + (ptrdiff_t)y * bitmap->pitch;
+        bool active = false;
+        for (unsigned x = 0; x < bitmap->width; x++) {
+            bool ink = row[x / 8] & (0x80 >> (x % 8));
+            if (ink && !active && ++runs > 65536) return false;
+            active = ink;
+        }
+    }
+    unsigned lines = !!(flags & DECO_UNDERLINE) + !!(flags & DECO_STRIKETHROUGH);
+    if (!runs && !lines) { ass_outline_clear(outline); return true; }
+    if (!ass_outline_alloc(outline, (runs + lines) * 4, (runs + lines) * 4)) return false;
+    for (unsigned y = 0; y < bitmap->rows && bitmap->width; y++) {
+        const unsigned char *row = bitmap->buffer + (ptrdiff_t)y * bitmap->pitch;
+        for (unsigned x = 0; x < bitmap->width;) {
+            if (!(row[x / 8] & (0x80 >> (x % 8)))) { x++; continue; }
+            unsigned start = x++;
+            while (x < bitmap->width && (row[x / 8] & (0x80 >> (x % 8)))) x++;
+            int32_t left = (slot->bitmap_left + (int)start) * 64;
+            int32_t right = (slot->bitmap_left + (int)x) * 64;
+            int32_t top = ((int)y - slot->bitmap_top) * 64;
+            ass_outline_add_rect(outline, left, top, right, top + 64);
+        }
+    }
+    int32_t advance = slot->advance.x;
+    if (advance > 0 && (flags & DECO_UNDERLINE)) {
+        int32_t y = FFMAX(64, -slot->face->size->metrics.descender / 2);
+        ass_outline_add_rect(outline, 0, y, advance, y + 64);
+    }
+    if (advance > 0 && (flags & DECO_STRIKETHROUGH)) {
+        int32_t y = -slot->face->size->metrics.ascender / 3;
+        ass_outline_add_rect(outline, 0, y, advance, y + 64);
+    }
+    return true;
+}
+#endif
 bool ass_get_glyph_outline(ASS_Outline *outline, int32_t *advance,
                            FT_Face face, unsigned flags)
 {
@@ -790,7 +875,17 @@ bool ass_get_glyph_outline(ASS_Outline *outline, int32_t *advance,
         }
     }
 
-    assert(face->glyph->format == FT_GLYPH_FORMAT_OUTLINE);
+#if CONFIG_NATIVE_BITMAP_FONTS
+    if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+        // Vertical bitmap layout still requires a native vertical-metrics policy.
+        // Do not manufacture synthetic bold/italic glyphs from native bitmaps.
+        if (flags & DECO_ROTATE)
+            return false;
+        return bitmap_outline(outline, face->glyph, flags);
+    }
+#endif
+    if (face->glyph->format != FT_GLYPH_FORMAT_OUTLINE) return false;
+
     FT_Outline *source = &face->glyph->outline;
     if (!source->n_points && !n_lines) {
         ass_outline_clear(outline);

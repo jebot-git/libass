@@ -1,3 +1,46 @@
+DomeD native bitmap experiment
+=============================
+
+This separate clone is based on upstream 0.17.4 (`bbb3c7f1570a4a021e52683f3fbdf74fe492ae84`),
+branch `experiment/native-bitmap-fonts`. Nothing is installed system-wide.
+Enable with `meson setup build-bitmap -Dnative-bitmap-fonts=true -Ddefault_library=shared`;
+then `meson compile -C build-bitmap`. The Meson option defaults to false.
+Autotools does not enable this experimental path.
+
+The prototype admits non-scalable FreeType faces in Fontconfig and embedded-font
+selection, chooses the nearest native strike, uses fixed-strike advances in
+HarfBuzz, and converts monochrome glyph runs into pixel-cell contours. Existing
+libass transforms, clipping, outline/shadow and glyph caches remain in use.
+It reads the actual bitmap strike; no outline companion is substituted. This is
+not a new direct GPU renderer: cached contours pass through libass's ordinary CPU
+rasterizer, and mpv uploads/composites the resulting masks on its GPU video path.
+
+`test/native-bitmap.py` compares native masks/advances/spacing against FreeType
+for bitmap TTF, OTB and PCF using only the embedded test font. It checks nearest
+strike selection, unchanged-frame caching, outline/shadow, underline and rotation;
+a scalable Noto Sans control is byte-identical with the option disabled/enabled.
+Run it with `uv run --no-project --with freetype-py python test/native-bitmap.py`
+followed by enabled/disabled shared libraries and the three bitmap-font paths.
+`test/native-bitmap-outline.c` exercises negative pitch, empty glyphs, unsupported
+pixel modes, short/null buffers and coordinate/metric bounds under ASan/UBSan.
+The parent experiment's `artifacts/libass-bitmap*` contains the commands' evidence.
+
+Limitations: only monochrome fixed strikes are supported; grayscale/color strikes,
+vertical glyph rotation and synthetic bold/italic are not implemented. Native
+sizes snap rather than scaling to arbitrary requested sizes. Transforms can
+resample pixel edges; the comparison checks thresholded masks at native size,
+not equality of all antialiased alpha values. Complex multilingual shaping,
+fallback combinations, karaoke, clipping and the full ASS regression corpus still
+need broader testing before deployment. Malformed-font fuzzing remains necessary.
+The public ABI is unchanged, but this remains a local prototype, not a release.
+
+The parent `render-desktop-preview.py` accepts `DE_XR_LIBASS_BITMAP=1` to run
+mpvr against `build-bitmap/libass` only in an isolated DomeD session. The real
+Galmuri14Bitmap OSD proof uses `gpu-next`; default mpvr settings and its separate
+symbol font/subtitle font properties are retained.
+
+---
+
 libass [![Coverity scan build status](https://scan.coverity.com/projects/3531/badge.svg)](https://scan.coverity.com/projects/3531) [![Build status](https://github.com/libass/libass/actions/workflows/ghci.yml/badge.svg?branch=master&event=push)](https://github.com/libass/libass/actions/workflows/ghci.yml?query=branch%3Amaster+event%3Apush)
 ======
 libass is a portable subtitle renderer for the ASS/SSA (Advanced Substation Alpha/Substation Alpha) subtitle format. It is mostly compatible with VSFilter.
