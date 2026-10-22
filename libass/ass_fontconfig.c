@@ -122,6 +122,11 @@ static bool scan_fonts(FcConfig *config, ASS_FontProvider *provider)
         char *fullnames[MAX_NAME];
         char *families[MAX_NAME];
 
+#if CONFIG_NATIVE_BITMAP_FONTS
+        FcChar8 *format = NULL;
+        if (FcPatternGetString(pat, FC_FONTFORMAT, 0, &format) != FcResultMatch || strcmp((const char *)format, "BDF"))
+            continue;
+#endif
         // skip non-outline fonts
         FcResult result = FcPatternGetBool(pat, FC_OUTLINE, 0, &outline);
         if (result != FcResultMatch)
@@ -237,7 +242,11 @@ static void cache_fallbacks(ProviderPrivate *fc)
     if (!pat)
         return;
     FcPatternAddString(pat, FC_FAMILY, (FcChar8 *)"sans-serif");
+#if CONFIG_NATIVE_BITMAP_FONTS
+    FcPatternAddString(pat, FC_FONTFORMAT, (FcChar8 *)"BDF");
+#else
     FcPatternAddBool(pat, FC_OUTLINE, FcTrue);
+#endif
     FcConfigSubstitute (fc->config, pat, FcMatchPattern);
     FcDefaultSubstitute (pat);
 
@@ -323,7 +332,11 @@ static void get_substitutions(void *priv, const char *name,
 
     FcPatternAddString(pat, FC_FAMILY, (FcChar8 *)name);
     FcPatternAddString(pat, FC_FAMILY, (FcChar8 *)"__libass_delimiter");
+#if CONFIG_NATIVE_BITMAP_FONTS
+    FcPatternAddString(pat, FC_FONTFORMAT, (FcChar8 *)"BDF");
+#else
     FcPatternAddBool(pat, FC_OUTLINE, FcTrue);
+#endif
     if (!FcConfigSubstitute(fc->config, pat, FcMatchPattern))
         goto cleanup;
 

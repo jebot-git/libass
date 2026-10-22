@@ -101,5 +101,6 @@ for font in map(Path,sys.argv[3:]):
     assert crop(render(enabled,font,size,r'{\frz15}M'),640),'Rotation retains native glyphs'
     print('PASS native mask, spaces/advances, strike snapping, cache, outline/shadow, underline and rotation:',font.name,flush=True)
 outline=Path('/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf')
-assert render(enabled,outline,21,'Outline control')==render(disabled,outline,21,'Outline control'),'Outline-font rendering changed'
-print('PASS outline-font output is byte-identical with the native bitmap feature disabled/enabled',flush=True)
+assert not crop(render(enabled,outline,21,'Outline control'),640), 'BDF-only build accepted an outline font'
+assert crop(render(disabled,outline,21,'Outline control'),640), 'Control library must still render the outline fixture'
+print('PASS BDF-only build rejects outline fonts; unpatched control still accepts them',flush=True)

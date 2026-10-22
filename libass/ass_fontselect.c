@@ -32,6 +32,7 @@
 #include <ft2build.h>
 #include <sys/types.h>
 #include FT_FREETYPE_H
+#include FT_FONT_FORMATS_H
 #include FT_SFNT_NAMES_H
 #include FT_TRUETYPE_IDS_H
 #include FT_TRUETYPE_TABLES_H
@@ -261,6 +262,10 @@ get_font_info(FT_Library lib, FT_Face face, const char *fallback_family_name,
     char *fullnames[MAX_FULLNAME];
     char *families[MAX_FULLNAME];
 
+#if CONFIG_NATIVE_BITMAP_FONTS
+    if (!FT_Get_Font_Format(face) || strcmp(FT_Get_Font_Format(face), "BDF"))
+        return false;
+#endif
     // we're only interested in outlines
     if (!(face->face_flags & FT_FACE_FLAG_SCALABLE)) {
 #if CONFIG_NATIVE_BITMAP_FONTS

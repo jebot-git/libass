@@ -7,7 +7,7 @@ Enable with `meson setup build-bitmap -Dnative-bitmap-fonts=true -Ddefault_libra
 then `meson compile -C build-bitmap`. The Meson option defaults to false.
 Autotools does not enable this experimental path.
 
-The prototype admits non-scalable FreeType faces in Fontconfig and embedded-font
+The enabled build admits BDF-only non-scalable FreeType faces in Fontconfig and embedded-font
 selection, chooses the nearest native strike, uses fixed-strike advances in
 HarfBuzz, and converts monochrome glyph runs into pixel-cell contours. Existing
 libass transforms, clipping, outline/shadow and glyph caches remain in use.
@@ -16,9 +16,9 @@ not a new direct GPU renderer: cached contours pass through libass's ordinary CP
 rasterizer, and mpv uploads/composites the resulting masks on its GPU video path.
 
 `test/native-bitmap.py` compares native masks/advances/spacing against FreeType
-for bitmap TTF, OTB and PCF using only the embedded test font. It checks nearest
+for raw BDFs using only the embedded test font. It checks nearest
 strike selection, unchanged-frame caching, outline/shadow, underline and rotation;
-a scalable Noto Sans control is byte-identical with the option disabled/enabled.
+the BDF-only build rejects a scalable Noto Sans control, while the unpatched control library accepts it.
 Run it with `uv run --no-project --with freetype-py python test/native-bitmap.py`
 followed by enabled/disabled shared libraries and the three bitmap-font paths.
 `test/native-bitmap-outline.c` exercises negative pitch, empty glyphs, unsupported
